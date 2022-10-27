@@ -11,9 +11,11 @@ from torch.utils.data import DataLoader, random_split
 from torch import nn
 import torch.nn.functional as F
 import torch.optim as optim
+from PIL import Image
 
 # make torch dataset from tif images
 data_dir = '/nfs_home/nallapar/dandl/data/addSpots/full/'
+# data_dir = '../data/bg_data/training_data/bg_remap_total/bg_remap_train_addSpots/full'
 
 transform = transforms.Compose([transforms.Grayscale(), transforms.ToTensor()])
 
@@ -25,32 +27,22 @@ batch_size = 4
 
 train_loader = torch.utils.data.DataLoader(train_data, batch_size=batch_size)
 valid_loader = torch.utils.data.DataLoader(val_data, batch_size=batch_size)
+# test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
 
 # build the variational auto-encoder
 class VariationalEncoder(nn.Module):
     def __init__(self, latent_dims):
         super(VariationalEncoder, self).__init__()
-        self.conv1 = nn.Conv2d(1, 8, 3, stride=1, padding='same')
-        self.batch1 = nn.BatchNorm2d(8)
-        self.conv2 = nn.Conv2d(8, 8, 3, stride=1, padding='same')
-        self.batch2 = nn.BatchNorm2d(8)
-        self.maxpool1 = nn.MaxPool2d(2)
-
-        self.conv3 = nn.Conv2d(8, 16, 3, stride=1, padding='same')
-        self.batch3 = nn.BatchNorm2d(16)
-        self.conv4 = nn.Conv2d(16, 16, 3, stride=1, padding='same')
-        self.batch4 = nn.BatchNorm2d(16)
-        self.maxpool2 = nn.MaxPool2d(2)
-
-        self.conv5 = nn.Conv2d(16, 32, 3, stride=1, padding='same')
-        self.batch5 = nn.BatchNorm2d(32)
-        self.conv6 = nn.Conv2d(32, 32, 3, stride=1, padding='same')
-        self.batch6 = nn.BatchNorm2d(32)
-        self.maxpool3 = nn.MaxPool2d(2)
-
-        self.linear1 = nn.Linear(4*4*32, 128)
-        self.linear2 = nn.Linear(128, latent_dims)
-        self.linear3 = nn.Linear(128, latent_dims)
+        self.conv1 = nn.Conv2d(1, 8, 3, stride=2, padding=1)
+        self.conv2 = nn.Conv2d(8, 16, 3, stride=2, padding=1)
+        self.batch2 = nn.BatchNorm2d(16)
+        self.conv3 = nn.Conv2d(16, 32, 3, stride=2, padding=1)
+        self.batch3 = nn.BatchNorm2d(32)
+        self.conv4 = nn.Conv2d(32, 64, 3, stride=2, padding=1)
+        self.linear1 = nn.Linear(2*2*64, 128)
+        self.linear1_1 = nn.Linear(128, 64)
+        self.linear2 = nn.Linear(64, latent_dims)
+        self.linear3 = nn.Linear(64, latent_dims)
 
         self.N = torch.distributions.Normal(0, 1)
         self.N.loc = self.N.loc.cuda()
@@ -59,22 +51,13 @@ class VariationalEncoder(nn.Module):
 
     def forward(self, x):
         x = x.to(device)
-
-        x = F.leaky_relu(self.batch1(self.conv1(x)))
-        x = F.leaky_relu(self.batch2(self.conv2(x)))
-        x = F.leaky_relu(self.maxpool1(x))
-
-        x = F.leaky_relu(self.batch3(self.conv3(x)))
-        x = F.leaky_relu(self.batch4(self.conv4(x)))
-        x = F.leaky_relu(self.maxpool2(x))
-
-        x = F.leaky_relu(self.batch5(self.conv5(x)))
-        x = F.leaky_relu(self.batch6(self.conv6(x)))
-        x = F.leaky_relu(self.maxpool3(x))
-
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.batch2(self.conv2(x)))
+        x = F.relu(self.batch3(self.conv3(x)))
+        x = F.relu(self.conv4(x))
         x = torch.flatten(x, start_dim=1)
-
-        x = F.leaky_relu(self.linear1(x))
+        x = F.relu(self.linear1(x))
+        x = F.relu(self.linear1_1(x))
         mu = self.linear2(x) # mean
         sigma = torch.exp(self.linear3(x)) # variance
         z = mu + sigma*self.N.sample(mu.shape)
@@ -87,42 +70,34 @@ class Decoder(nn.Module):
         super().__init__()
 
         self.decoder_lin = nn.Sequential(
-            nn.Linear(latent_dims, 128),
-            nn.LeakyReLU(True),
-            nn.Linear(128, 4*4*32),
-            nn.LeakyReLU(True)
+            nn.Linear(latent_dims, 64),
+            nn.ReLU(True),
+            nn.Linear(64, 128),
+            nn.ReLU(True),
+            nn.Linear(128, 2*2*64),
+            nn.ReLU(True)
         )
 
-        self.unflatten = nn.Unflatten(dim=1, unflattened_size=(32,4,4))
+        self.unflatten = nn.Unflatten(dim=1, unflattened_size=(64,2,2))
 
         self.decoder_conv = nn.Sequential(
-            nn.ConvTranspose2d(32, 16, 3, stride=2, padding = 1, output_padding=1),
+            nn.ConvTranspose2d(64, 32, 3, stride=2, padding=1, output_padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(True),
+            nn.ConvTranspose2d(32, 16, 3, stride=2, padding=1, output_padding=1),
             nn.BatchNorm2d(16),
-            nn.LeakyReLU(True),
-            nn.Conv2d(16, 16, 3, stride=1, padding='same'),
-            nn.BatchNorm2d(16),
-            nn.LeakyReLU(True),
+            nn.ReLU(True),
             nn.ConvTranspose2d(16, 8, 3, stride=2, padding=1, output_padding=1),
             nn.BatchNorm2d(8),
-            nn.LeakyReLU(True),
-            nn.Conv2d(8, 8, 3, stride=1, padding='same'),
-            nn.BatchNorm2d(8),
-            nn.LeakyReLU(True),
+            nn.ReLU(True),
             nn.ConvTranspose2d(8, 1, 3, stride=2, padding=1, output_padding=1)
-        )
-
-        self.sigmoidConv = nn.Sequential(
-            nn.Conv2d(1, 1, 3, stride=1, padding='same'),
-            nn.BatchNorm2d(1),
-            nn.Sigmoid()
         )
 
     def forward(self, x):
         x = self.decoder_lin(x)
         x = self.unflatten(x)
         x = self.decoder_conv(x)
-
-        x = self.sigmoidConv(x)
+        x = torch.sigmoid(x)
         return x
 
 class VariationalAutoencoder(nn.Module):
@@ -134,7 +109,8 @@ class VariationalAutoencoder(nn.Module):
     def forward(self, x):
         x = x.to(device)
         z = self.encoder(x)
-        return self.decoder(z)
+        out = self.decoder(z)
+        return out
 
 ## make the model
 torch.manual_seed(0)
@@ -143,7 +119,7 @@ torch.manual_seed(0)
 d = 16
 
 # hyperparams:
-bs = 32
+bs = 256
 lr = 1e-3
 
 vae = VariationalAutoencoder(latent_dims = d)
@@ -225,29 +201,42 @@ def test_epoch(vae, device, dataloader, patch_size = 32):
     return val_loss / num_samples_val
 
 ## plotting function
-def plot_ae_outputs(encoder, decoder, n=10):
-    plt.figure(figsize=(16, 4.5))
-    targets = test_dataset.targets.numpy()
-    t_idx = {i:np.where(targets==i)[0][0] for i in range(n)}
-    for i in range(n):
-        ax = plt.subplot(2, n, i+1)
-        img = test_dataset[t_idx[i]][0].unsqueeze(0).to(device)
-        encoder.eval()
-        decoder.eval()
-        with torch.no_grad():
-            rec_img = decoder(encoder(img))
-        plt.imshow(img.cpu().squeeze().numpy(), cmap='gist_gray')
-        ax.get_xaxis().set_visible(False)
-        ax.get_yaxis().set_visible(False)
-        if i == n//2:
-            ax.set_title('Original images')
-        ax = plt.subplot(2, n, i + 1 +n)
-        plt.imshow(rec_img.cpu().squeeze().numpy(), cmap='gist_gray')
-        ax.get_xaxis().set_visible(False)
-        ax.get_yaxis().set_visible(False)
-        if i == n//2:
-            ax.set_title('Reconstructed images')
-        plt.show()
+## plotting function
+def plot_ae_outputs(vae_model, n=1, patch_size=32):
+    for x, _ in valid_loader:
+        img = x[0]
+
+        print(img.shape)
+
+        full_img_patches = []
+        for i in range(100, img.shape[1]-patch_size, patch_size):
+            for j in range(i, img.shape[2]-patch_size, patch_size):
+                patch_img = img[:, i:i+patch_size, j:j+patch_size]
+                full_img_patches.append(patch_img)
+                if len(full_img_patches) == n:
+                    full_img_patches = torch.stack(full_img_patches)
+                    break
+            break
+
+        full_img_patches = full_img_patches.to(device)
+        full_img_patches_hat = vae(full_img_patches)
+
+        for s in range(n):
+            orig_img = np.squeeze(np.asarray(full_img_patches[s].detach().numpy()), axis=0) * 255
+            pred_img = np.squeeze(np.asarray(full_img_patches_hat[s].detach().numpy()), axis=0) * 255
+            # print(z_embed[s])
+            print(full_img_patches_hat[s])
+            orig_img = Image.fromarray(orig_img)
+            pred_img = Image.fromarray(pred_img)
+
+            fig = plt.figure()
+            ax1 = fig.add_subplot(2,2,1)
+            ax1.imshow(orig_img)
+            ax2 = fig.add_subplot(2,2,2)
+            ax2.imshow(pred_img)
+            plt.show()
+
+        break
 
 # VAE training
 num_epochs = 100
@@ -261,8 +250,11 @@ for epoch in range(num_epochs):
     if val_loss < best_val_loss:
         print("SAVING")
         best_val_loss = val_loss
-        torch.save(vae.state_dict(), 'models/start_vae_addSpots_run4.pt')
+        torch.save(vae.state_dict(), 'models/restart_vae_addSpots_r4.pt')
     print('\n EPOCH {}/{} \t train loss {:.3f} \t val loss {:.3f} \t best_val_loss {:.3f}'.format(epoch+1, num_epochs, train_loss, val_loss, best_val_loss))
-    # plot_ae_outputs(vae.encoder, vae.decoder, n=2)
+    # plot_ae_outputs(vae, n=2)
 
-# try to run testing on the vesicle data.
+# plot predictions
+vae.load_state_dict(torch.load('models/restart_vae_addSpots_r4.pt', map_location = torch.device('cpu')))
+vae.eval()
+plot_ae_outputs(vae, n=10)
