@@ -12,10 +12,11 @@ from torch import nn
 import torch.nn.functional as F
 import torch.optim as optim
 from PIL import Image
+from piqa import SSIM 
 
 # make torch dataset from tif images
-data_dir = '/nfs_home/nallapar/dandl/data/addSpots/full/'
-# data_dir = '../data/bg_data/training_data/bg_remap_total/bg_remap_train_addSpots/full'
+# data_dir = '/nfs_home/nallapar/dandl/data/addSpots/full/'
+data_dir = '../data/bg_data/training_data/bg_remap_total/bg_remap_train_addSpots/full'
 
 transform = transforms.Compose([transforms.Grayscale(), transforms.ToTensor()])
 
@@ -28,6 +29,10 @@ batch_size = 4
 train_loader = torch.utils.data.DataLoader(train_data, batch_size=batch_size)
 valid_loader = torch.utils.data.DataLoader(val_data, batch_size=batch_size)
 # test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
+
+class SSIMLoss(SSIM):
+    def forward(self, img1, img2):
+        return 1. - super().forward(img1, img2)
 
 # build the variational auto-encoder
 class VariationalEncoder(nn.Module):
@@ -62,8 +67,8 @@ class VariationalEncoder(nn.Module):
         self.linear3 = nn.Linear(16, latent_dims)
 
         self.N = torch.distributions.Normal(0, 1)
-        self.N.loc = self.N.loc.cuda()
-        self.N.scale = self.N.scale.cuda()
+        # self.N.loc = self.N.loc.cuda()
+        # self.N.scale = self.N.scale.cuda()
         self.kl = 0
 
     def forward(self, x):
@@ -84,7 +89,7 @@ class VariationalEncoder(nn.Module):
         x = F.relu(self.linear1_2(x))
         x = F.relu(self.linear1_3(x))
         x = F.relu(self.linear1_4(x))
-        x = F.relu(self.linear1_5(x))
+        # x = F.relu(self.linear1_5(x))
         mu = self.linear2(x) # mean
         sigma = torch.exp(self.linear3(x)) # variance
         z = mu + sigma*self.N.sample(mu.shape)
@@ -166,6 +171,9 @@ print(vae)
 optim = torch.optim.Adam(vae.parameters(), lr=lr, weight_decay=1e-5)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optim, 'min', verbose=True, patience=30)
 
+# criterion = SSIMLoss(n_channels=1).cuda()
+criterion = SSIMLoss(n_channels=1)
+
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 print(f'Selected device: {device}')
 
@@ -196,7 +204,8 @@ def train_epoch(vae, device, dataloader, optimizer, patch_size = 32):
                         full_img_patches = full_img_patches.to(device)
                         full_img_patches_hat = vae(full_img_patches)
                         # print(full_img_patches.shape, full_img_patches_hat.shape)
-                        loss = ((full_img_patches - full_img_patches_hat)**2).sum() + vae.encoder.kl
+                        # loss = ((full_img_patches - full_img_patches_hat)**2).sum() + vae.encoder.kl
+                        loss = criterion(full_img_patches, full_img_patches_hat) + vae.encoder.kl
 
                         optimizer.zero_grad()
                         loss.backward()
@@ -232,7 +241,8 @@ def test_epoch(vae, device, dataloader, patch_size = 32):
             full_img_patches = full_img_patches.to(device)
             full_img_patches_hat = vae(full_img_patches)
             # print(x.shape, x_hat.shape)
-            loss = ((full_img_patches - full_img_patches_hat)**2).sum() + vae.encoder.kl
+            # loss = ((full_img_patches - full_img_patches_hat)**2).sum() + vae.encoder.kl
+            loss = criterion(full_img_patches, full_img_patches_hat) + vae.encoder.kl
             val_loss += loss.item()
             num_samples_val += full_img_patches.shape[0]
 
@@ -277,21 +287,21 @@ def plot_ae_outputs(vae_model, n=1, patch_size=32):
             break
 
 # VAE training
-num_epochs = 500
-best_val_loss = 1e+10
-for epoch in range(num_epochs):
-    print("Training Epoch {}:".format(epoch+1))
-    train_loss = train_epoch(vae, device, train_loader, optim)
-    print("Validation")
-    val_loss = test_epoch(vae, device, valid_loader)
-    scheduler.step(val_loss)
-    if val_loss < best_val_loss:
-        print("SAVING")
-        best_val_loss = val_loss
-        torch.save(vae.state_dict(), 'models/restart_vae_addSpots_r13.pt')
-    print('\n EPOCH {}/{} \t train loss {:.3f} \t val loss {:.3f} \t best_val_loss {:.3f}'.format(epoch+1, num_epochs, train_loss, val_loss, best_val_loss))
-    # plot_ae_outputs(vae, n=2)
+# num_epochs = 500
+# best_val_loss = 1e+10
+# for epoch in range(num_epochs):
+#     print("Training Epoch {}:".format(epoch+1))
+#     train_loss = train_epoch(vae, device, train_loader, optim)
+#     print("Validation")
+#     val_loss = test_epoch(vae, device, valid_loader)
+#     scheduler.step(val_loss)
+#     if val_loss < best_val_loss:
+#         print("SAVING")
+#         best_val_loss = val_loss
+#         torch.save(vae.state_dict(), 'models/restart_vae_addSpots_r11_SSIM.pt')
+#     print('\n EPOCH {}/{} \t train loss {:.3f} \t val loss {:.3f} \t best_val_loss {:.3f}'.format(epoch+1, num_epochs, train_loss, val_loss, best_val_loss))
+#     # plot_ae_outputs(vae, n=2)
 
 # plot predictions
-vae.load_state_dict(torch.load('models/restart_vae_addSpots_r13.pt', map_location = torch.device('cpu')))
+vae.load_state_dict(torch.load('models/restart_vae_addSpots_r11_SSIM.pt', map_location = torch.device('cpu')))
 plot_ae_outputs(vae, n=10)

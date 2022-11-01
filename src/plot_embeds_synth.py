@@ -24,7 +24,7 @@ for i in range(len(patch_annots)):
 print(len(patch_annots))
 
 # import data embeddings
-embeds_vae = np.load('gen_files/embeds_vae_BGAddSpots_run1__ONLY1.npz', allow_pickle = True)['arr_0']
+embeds_vae = np.load('gen_files/embeds_DCVAE_addSpots__ONLY1.npz', allow_pickle = True)['arr_0']
 embeds_vae = np.squeeze(embeds_vae, axis=1)
 print(embeds_vae.shape)
 
@@ -40,5 +40,5 @@ plt.scatter(
     low_dim_embeds[:, 1],
     c=colors_annots)
 plt.gca().set_aspect('equal', 'datalim')
-plt.title('UMAP of VAE-BGSynth_run1 on Receptor Test', fontsize=20)
+plt.title('UMAP of DCVAESynth_run1 on Add Spots', fontsize=20)
 plt.show()

@@ -39,23 +39,26 @@ class VariationalEncoder(nn.Module):
         
         # second conv
         self.conv2 = nn.Conv2d(8, 16, 3, stride=2, padding=1)
-        self.batch2 = nn.BatchNorm2d(16)
-        self.conv2_2 = nn.Conv2d(16, 16, 3, stride=1, padding='same')
-        self.batch2_2 = nn.BatchNorm2d(16)
+        # self.batch2 = nn.BatchNorm2d(16)
+        # self.conv2_2 = nn.Conv2d(16, 16, 3, stride=1, padding='same')
+        # self.batch2_2 = nn.BatchNorm2d(16)
         
         # third conv
         self.conv3 = nn.Conv2d(16, 32, 3, stride=2, padding=1)
-        self.batch3 = nn.BatchNorm2d(32)
-        self.conv3_2 = nn.Conv2d(32, 32, 3, stride=1, padding='same')
-        self.batch3_2 = nn.BatchNorm2d(32)
+        # self.batch3 = nn.BatchNorm2d(32)
+        # self.conv3_2 = nn.Conv2d(32, 32, 3, stride=1, padding='same')
+        # self.batch3_2 = nn.BatchNorm2d(32)
         
         # fourth conv
         self.conv4 = nn.Conv2d(32, 64, 3, stride=2, padding=1)
+
+        # fifth conv
+        self.conv5 = nn.Conv2d(64, 64, 3, stride=2, padding=1)
         
         # linear layers
-        self.linear1 = nn.Linear(2*2*64, 128)
-        self.linear1_2 = nn.Linear(128, 64)
-        self.linear1_3 = nn.Linear(64, 32)
+        self.linear1 = nn.Linear(1*1*64, 32)
+        # self.linear1_2 = nn.Linear(128, 64)
+        # self.linear1_3 = nn.Linear(64, 32)
         self.linear1_4 = nn.Linear(32, 16)
         # self.linear1_5 = nn.Linear(16, 8)
         self.linear2 = nn.Linear(16, latent_dims)
@@ -70,21 +73,25 @@ class VariationalEncoder(nn.Module):
         x = x.to(device)
 
         x = F.relu(self.conv1(x))
-
-        x = F.relu(self.batch2(self.conv2(x)))
-        x = F.relu(self.batch2_2(self.conv2_2(x)))
-        
-        x = F.relu(self.batch3(self.conv3(x)))
-        x = F.relu(self.batch3_2(self.conv3_2(x)))
-        
+        x = F.relu(self.conv2(x))
+        x = F.relu(self.conv3(x))
         x = F.relu(self.conv4(x))
+        x = F.relu(self.conv5(x))
+
+        # x = F.relu(self.batch2(self.conv2(x)))
+        # x = F.relu(self.batch2_2(self.conv2_2(x)))
+        
+        # x = F.relu(self.batch3(self.conv3(x)))
+        # x = F.relu(self.batch3_2(self.conv3_2(x)))
+        
+        # x = F.relu(self.conv4(x))
         
         x = torch.flatten(x, start_dim=1)
         x = F.relu(self.linear1(x))
-        x = F.relu(self.linear1_2(x))
-        x = F.relu(self.linear1_3(x))
+        # x = F.relu(self.linear1_2(x))
+        # x = F.relu(self.linear1_3(x))
         x = F.relu(self.linear1_4(x))
-        x = F.relu(self.linear1_5(x))
+        # x = F.relu(self.linear1_5(x))
         mu = self.linear2(x) # mean
         sigma = torch.exp(self.linear3(x)) # variance
         z = mu + sigma*self.N.sample(mu.shape)
@@ -101,31 +108,20 @@ class Decoder(nn.Module):
             nn.ReLU(True),
             nn.Linear(16, 32),
             nn.ReLU(True),
-            nn.Linear(32, 64),
+            nn.Linear(32, 1*1*64),
             nn.ReLU(True),
-            nn.Linear(64, 128),
-            nn.ReLU(True),
-            nn.Linear(128, 2*2*64),
-            nn.ReLU(True)
         )
 
-        self.unflatten = nn.Unflatten(dim=1, unflattened_size=(64,2,2))
+        self.unflatten = nn.Unflatten(dim=1, unflattened_size=(64,1,1))
 
         self.decoder_conv = nn.Sequential(
+            nn.ConvTranspose2d(64, 64, 3, stride=2, padding=1, output_padding=1),
+            nn.ReLU(True),
             nn.ConvTranspose2d(64, 32, 3, stride=2, padding=1, output_padding=1),
-            nn.BatchNorm2d(32),
             nn.ReLU(True),
             nn.ConvTranspose2d(32, 16, 3, stride=2, padding=1, output_padding=1),
-            nn.BatchNorm2d(16),
-            nn.ReLU(True),
-            nn.Conv2d(16, 16, 3, stride=1, padding='same'),
-            nn.BatchNorm2d(16),
             nn.ReLU(True),
             nn.ConvTranspose2d(16, 8, 3, stride=2, padding=1, output_padding=1),
-            nn.BatchNorm2d(8),
-            nn.ReLU(True),
-            nn.Conv2d(8, 8, 3, stride=1, padding='same'),
-            nn.BatchNorm2d(8),
             nn.ReLU(True),
             nn.ConvTranspose2d(8, 1, 3, stride=2, padding=1, output_padding=1)
         )

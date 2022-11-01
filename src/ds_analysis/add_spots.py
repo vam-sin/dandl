@@ -20,6 +20,8 @@ filename_list = []
 sp_list_x_mid = []
 sp_list_y_mid = []
 
+spot_size = 15
+
 for i in onlyfiles:
     if '.tif' in i:
         filename = mypath + i
@@ -28,18 +30,20 @@ for i in onlyfiles:
         np_img = np.asarray(img).copy()
         # np_img.setflags(write=1)
         # print(np_img.shape)
+        filename_save = '../../data/bg_data/training_data/bg_remap_total/bg_remap_test_addSpots_BIG/all/' + i
         for sp in range(100): # 100 ribosome spots
             #plt.imshow(img)
             #plt.show()
             # print(np_img[100][100])
             start_x_sp = random.choice(start_)
             start_y_sp = random.choice(start_)
-            for x in range(start_x_sp, start_x_sp+5):
-                for y in range(start_y_sp, start_y_sp+5):
-                    np_img[x][y] = random.choice(high_int)
-                    filename_list.append(filename)
-                    sp_list_x_mid.append(start_x_sp + 2.5)
-                    sp_list_y_mid.append(start_y_sp + 2.5)
+            for x in range(start_x_sp, start_x_sp+spot_size):
+                for y in range(start_y_sp, start_y_sp+spot_size):
+                    if x < np_img.shape[0] and y < np_img.shape[1]:
+                        np_img[x][y] = random.choice(high_int)
+                        filename_list.append(filename_save)
+                        sp_list_x_mid.append(start_x_sp + spot_size/2)
+                        sp_list_y_mid.append(start_y_sp + spot_size/2)
             # print(np_img[100][100])
         img2 = Image.fromarray(np_img)
         # plt.imshow(img2)
@@ -47,10 +51,10 @@ for i in onlyfiles:
             # img = img.convert('L')
             # plt.imshow(img)
             # plt.show()
-        filename_save = '../../data/bg_data/training_data/bg_remap_total/bg_remap_test_wspots/' + i
+        filename_save = '../../data/bg_data/training_data/bg_remap_total/bg_remap_test_addSpots_BIG/all/' + i
         img2.save(filename_save)
             # break
         # break
 dict_csv = {'filename': filename_list, 'spot_x_mid': sp_list_x_mid, 'spot_y_mid': sp_list_y_mid}
 spots_csv = pd.DataFrame(dict_csv)
-spots_csv.to_csv('../../data/bg_data/training_data/bg_remap_total/test_spots.csv')
+spots_csv.to_csv('../../data/bg_data/training_data/bg_remap_total/test_spots_BIG.csv')
