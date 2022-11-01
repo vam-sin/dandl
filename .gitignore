@@ -3,8 +3,8 @@
 /papers
 /repos
 /src/ds_analysis/images
-/src/gen_files
-/src/images
-/src/models
-/src/tutorial
-/src/vae_reconstruct_img
+/src/VAE/gen_files
+/src/VAE/images
+/src/VAE/models
+/src/VAE/tutorial
+/src/VAE/vae_reconstruct_img
